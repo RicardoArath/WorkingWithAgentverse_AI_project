@@ -1,16 +1,61 @@
-from uagents import Agent, Context
+from uagents import Agent, Context, Model
+from llm_client import query_llm
 
-alice = Agent(name="alice", seed="alice recovery phrase")
+# =====================================================
+# Modelo de mensaje
+# =====================================================
+class StudentMessage(Model):
+    message: str
 
+# Normas de ejemplo
+NORMAS = {
+    "menores": [
+        "No usar gorra en clase",
+        "Llegar 5 minutos tarde"
+    ],
+    "mayores": [
+        "Plagio",
+        "Faltar examen sin justificar"
+    ]
+}
 
-@alice.on_interval(period=1.0)
-async def on_interval(ctx: Context):
-    current_count = ctx.storage.get("count") or 0
+# =====================================================
+# Agente
+# =====================================================
+agent = Agent(
+    name="university_agent",
+    seed="reglamento_universidad",
+    endpoint=["http://127.0.0.1:8000/submit"]
+)
 
-    ctx.logger.info(f"My count is: {current_count}")
+@agent.on_message(model=StudentMessage)   # ✅ aquí va el modelo
+async def handle_message(ctx: Context, sender: str, msg: StudentMessage):
+    ctx.logger.info(f"📩 Mensaje recibido: {msg.message}")
 
-    ctx.storage.set("count", current_count + 1)
+    prompt = f"""
+    Estas son las normas de la universidad (clasificadas en menor y mayor):
 
+    Normas menores:
+    {chr(10).join(NORMAS['menores'])}
+
+    Normas mayores:
+    {chr(10).join(NORMAS['mayores'])}
+
+    El estudiante escribió: "{msg.message}"
+
+    Pregunta: ¿Esta falta corresponde a una norma menor o mayor?
+    Responde SOLO con 'menor' o 'mayor'.
+    """
+
+    gravedad = query_llm(prompt).lower()
+    ctx.logger.info(f"🤖 Respuesta del LLM: {gravedad}")
+
+    if "menor" in gravedad:
+        ctx.logger.info("✅ Norma menor → preparar correo base.")
+    elif "mayor" in gravedad:
+        ctx.logger.info("⚠️ Norma mayor → agendar cita en Google Calendar.")
+    else:
+        ctx.logger.info("🤔 No se pudo clasificar.")
 
 if __name__ == "__main__":
-    alice.run()
+    agent.run()
