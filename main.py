@@ -1,53 +1,52 @@
-from uagents import Agent, Context, Model
-from llm_client import query_llm
+# main.py
+from uagents import Agent, Context
+from openai import OpenAI
+import os
+from models import StudentMessage, NORMAS
 
 # =====================================================
-# Modelo de mensaje
+# Configuración del cliente Fetch.ai
 # =====================================================
-class StudentMessage(Model):
-    message: str
-
-# Normas de ejemplo
-NORMAS = {
-    "menores": [
-        "No usar gorra en clase",
-        "Llegar 5 minutos tarde"
-    ],
-    "mayores": [
-        "Plagio",
-        "Faltar examen sin justificar"
-    ]
-}
+client = OpenAI(
+    base_url="https://api.fetch.ai/v1",   
+    api_key=os.getenv("OPENAI_API_KEY")  
+)
 
 # =====================================================
-# Agente
+# Agente universitario
 # =====================================================
 agent = Agent(
     name="university_agent",
+    port=8000,
     seed="reglamento_universidad",
     endpoint=["http://127.0.0.1:8000/submit"]
 )
 
-@agent.on_message(model=StudentMessage)   # ✅ aquí va el modelo
+@agent.on_message(model=StudentMessage)
 async def handle_message(ctx: Context, sender: str, msg: StudentMessage):
     ctx.logger.info(f"📩 Mensaje recibido: {msg.message}")
 
     prompt = f"""
-    Estas son las normas de la universidad (clasificadas en menor y mayor):
+Estas son las normas de la universidad (clasificadas en menor y mayor):
 
-    Normas menores:
-    {chr(10).join(NORMAS['menores'])}
+Normas menores:
+{chr(10).join(NORMAS['menores'])}
 
-    Normas mayores:
-    {chr(10).join(NORMAS['mayores'])}
+Normas mayores:
+{chr(10).join(NORMAS['mayores'])}
 
-    El estudiante escribió: "{msg.message}"
+El estudiante escribió: "{msg.message}"
 
-    Pregunta: ¿Esta falta corresponde a una norma menor o mayor?
-    Responde SOLO con 'menor' o 'mayor'.
-    """
+Pregunta: ¿Esta falta corresponde a una norma menor o mayor?
+Responde SOLO con 'menor' o 'mayor'.
+"""
 
-    gravedad = query_llm(prompt).lower()
+    response = client.chat.completions.create(
+        model="asimov-one-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    gravedad = response.choices[0].message.content.strip().lower()
     ctx.logger.info(f"🤖 Respuesta del LLM: {gravedad}")
 
     if "menor" in gravedad:
